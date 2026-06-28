@@ -1,0 +1,64 @@
+name: Manual Build TikDown Android
+
+# 1. 触发条件：仅支持手动运行
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤一：检出仓库源码
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # 步骤二：设置 Java 环境（TikDown 为纯 Kotlin 开发的安卓项目，使用 Java 17）
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      # 步骤三：授予 Gradle 执行权限
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x ./gradlew
+
+      # 步骤四：执行编译（仅编译安卓通用 Release 版本）
+      - name: Build Android Release APK
+        run: ./gradlew assembleRelease
+
+      # 步骤五：整理产物并计算 sha256sums.txt
+      - name: Prepare Artifacts & Generate SHA256
+        run: |
+          # 创建一个用于存放最终产物的临时目录
+          mkdir -p output
+          
+          # 定位并复制编译生成的通用 Release APK（通常位于 app/build/outputs/apk/release/）
+          # 使用 find 兼容不同 Gradle 版本的默认输出命名
+          APK_PATH=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+          
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK file not found!"
+            exit 1
+          fi
+          
+          # 复制并统一命名为 TikDown-universal-release.apk
+          cp "$APK_PATH" output/TikDown-universal-release.apk
+          
+          # 进入输出目录计算 SHA256，确保产生的 txt 内部只含有相对文件名
+          cd output
+          sha256sum TikDown-universal-release.apk > sha256sums.txt
+          
+          echo "=== SHA256 Verification ==="
+          cat sha256sums.txt
+
+      # 步骤六：上传构建产物到 GitHub Actions（包含 APK 和 sha256sums.txt）
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TikDown-Android-Universal
+          path: |
+            output/TikDown-universal-release.apk
+            output/sha256sums.txt
